@@ -22,8 +22,9 @@ rf_taps = 151
 rf_decim = 10
 
 audio_Fs = 48e3
+audio_Fc = 1.6e4
+audio_taps = 151
 audio_decim = 5
-# add other settings for audio, like filter taps, ...
 
 if __name__ == "__main__":
 
@@ -35,11 +36,13 @@ if __name__ == "__main__":
 
 	# coefficients for the front-end low-pass filter
 	rf_coeff = signal.firwin(rf_taps, \
-							rf_Fc/(rf_Fs/2), \
+							audio_Fc/(audio_Fs/2), \
 							window=('hann'))
 
 	# coefficients for the filter to extract mono audio
-	audio_coeff = np.array([]) # to be updated by you during in-lab
+	audio_coeff = signal.firwin(audio_taps, \
+							rf_Fc/(rf_Fs/2), \
+							window=('hann'))
 
 	# set up drawing
 	fig, (ax0, ax1, ax2) = plt.subplots(nrows=3)
@@ -55,7 +58,7 @@ if __name__ == "__main__":
 	state_q_lpf_100k = np.zeros(rf_taps-1)
 	state_phase = 0
 	# add state as needed for the mono channel filter
-
+	state_audio_lpf_100k = np.zeros(audio_taps-1)
 	# audio buffer that stores all the audio blocks
 	audio_data = np.array([]) # to be updated by you during in-lab
 
@@ -84,13 +87,15 @@ if __name__ == "__main__":
 
 		# extract the mono audtio data through filtering
 		# audio_filt = ... change as needed
+		audio_filt = signal.lfilter(audio_coeff, 1.0, fm_demod)
 
 		# downsample audio data
 		# audio_block = ... change as needed
+		audio_block = audio_filt[::audio_decim]
 
 		# concatanete most recently processed audio_block
 		# to the previous blocks stored in audio_data
-		# audio_data = np.concatenate((audio_data, audio_block))
+		audio_data = np.concatenate((audio_data, audio_block))
 
 		# to save runtime select the range of blocks to log iq_data
 		# this includes both saving binary files as well plotting PSD
@@ -108,18 +113,18 @@ if __name__ == "__main__":
 			fm_demod.astype('float32').tofile(fm_demod_fname)
 
 			# PSD after extracting mono audio
-			# ax1.clear()
-			# ax1.psd(audio_filt, NFFT=512, Fs=(rf_Fs/rf_decim)/1e3)
-			# ax1.set_ylabel('PSD (dB/Hz)')
-			# ax1.set_xlabel('Freq (kHz)')
-			# ax1.set_title('Extracted Mono')
+			ax1.clear()
+			ax1.psd(audio_filt, NFFT=512, Fs=(rf_Fs/rf_decim)/1e3)
+			ax1.set_ylabel('PSD (dB/Hz)')
+			ax1.set_xlabel('Freq (kHz)')
+			ax1.set_title('Extracted Mono')
 
 			# PSD after decimating mono audio
-			# ax2.clear()
-			# ax2.psd(audio_block, NFFT=512, Fs=audio_Fs/1e3)
-			# ax2.set_ylabel('PSD (dB/Hz)')
-			# ax2.set_xlabel('Freq (kHz)')
-			# ax2.set_title('Mono Audio')
+			ax2.clear()
+			ax2.psd(audio_block, NFFT=512, Fs=audio_Fs/1e3)
+			ax2.set_ylabel('PSD (dB/Hz)')
+			ax2.set_xlabel('Freq (kHz)')
+			ax2.set_title('Mono Audio')
 
 			# save figure to file
 			fig.savefig("../data/fmMonoBlock" + str(block_count) + ".png")
@@ -132,4 +137,4 @@ if __name__ == "__main__":
 	wavfile.write("../data/fmMonoBlock.wav", int(audio_Fs), np.int16((audio_data/2)*32767))
 
 	# uncomment assuming you wish to show some plots
-	# plt.show()
+	plt.show()

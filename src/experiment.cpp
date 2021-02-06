@@ -38,11 +38,11 @@ int main()
 	// note: make sure that binary data vector is big enough to take the slice
 
 	// declare a vector of complex values for DFT
-  std::vector<std::complex<float>> Xf;
+  	std::vector<std::complex<float>> Xf;
 	// ... in-lab ...
 	// compute the Fourier transform
 	// the function is already provided in fourier.cpp
-
+	DFT(slice_data, Xf);
 	// compute the magnitude of each frequency bin
 	// note: we are concerned only with the magnitude of the frequency bin
 	// (there is NO logging of the phase response, at least not at this time)
@@ -50,6 +50,7 @@ int main()
 	// ... in-lab ...
 	// compute the magnitude of each frequency bin
 	// the function is already provided in fourier.cpp
+	computeVectorMagnitude(Xf, Xmag);
 
 	// log the frequency magnitude vector
 	vector_index.clear();
