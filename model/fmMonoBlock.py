@@ -15,6 +15,7 @@ import math
 
 # use "custom" fmDemodArctan
 from fmSupportLib import fmDemodArctan
+from fmSupportLib import fmDemodFriendly
 
 rf_Fs = 2.4e6
 rf_Fc = 100e3
@@ -26,6 +27,32 @@ audio_Fc = 1.6e4
 audio_taps = 151
 audio_decim = 5
 
+
+def convolution(x, h):
+	M = len(x)
+	N = len(h)
+	y = np.zeros(x.shape[0])
+	for n in range(M+N-1): #finite sequence, thus bound ensures all values are covered
+		for k in range(N+1):
+			if((n-k)>=0 and k<=(N-1) and (n-k)<=(M-1)): #conditions which result in invalid indexing (convolution value of 0)
+				y[n] += x[n - k]*h[k] #convolution summation
+		if n==len(x)-1: #if block size reached, break from loop
+			break
+	return y
+
+
+def lowPass(fc, fs, taps):
+	nc = fc/(fs/2)
+	h = [0]*taps
+	for i in range(taps):
+		if(i ==(taps-1)/2):
+			h[i] = nc
+		else:
+			h[i] = nc*( (np.sin(np.pi*nc*(i - (taps-1)/2)))/(np.pi*nc*(i - (taps-1)/2)))
+		h[i] = h[i] * (np.sin((i*np.pi)/taps)**2)
+	return h
+
+
 if __name__ == "__main__":
 
 	# read the raw IQ data from the recorded file
@@ -34,15 +61,20 @@ if __name__ == "__main__":
 	iq_data = np.fromfile(in_fname, dtype='float32')
 	print("Read raw RF data from \"" + in_fname + "\" in float32 format")
 
-	# coefficients for the front-end low-pass filter
-	rf_coeff = signal.firwin(rf_taps, \
-							audio_Fc/(audio_Fs/2), \
-							window=('hann'))
+	# # coefficients for the front-end low-pass filter
+	# rf_coeff = signal.firwin(rf_taps, \
+	# 						rf_Fc/(rf_Fs/2), \
+	# 						window=('hann'))
 
-	# coefficients for the filter to extract mono audio
-	audio_coeff = signal.firwin(audio_taps, \
-							rf_Fc/(rf_Fs/2), \
-							window=('hann'))
+	# # coefficients for the filter to extract mono audio
+	# audio_coeff = signal.firwin(audio_taps, \
+	# 						audio_Fc/(audio_Fs/2), \
+	# 						window=('hann'))
+
+	#************************TAKEHOME EXERCISE #2****************************************
+
+	rf_coeff = lowPass(rf_Fc, rf_Fs, rf_taps)
+	audio_coeff = lowPass(audio_Fc, audio_Fs, audio_taps)
 
 	# set up drawing
 	fig, (ax0, ax1, ax2) = plt.subplots(nrows=3)
@@ -71,27 +103,41 @@ if __name__ == "__main__":
 		print('Processing block ' + str(block_count))
 
 		# filter to extract the FM channel (I samples are even, Q samples are odd)
+
+		#************************TAKEHOME EXERCISE #2****************************************
+
 		i_filt, state_i_lpf_100k = signal.lfilter(rf_coeff, 1.0, \
 				iq_data[(block_count)*block_size:(block_count+1)*block_size:2],
 				zi=state_i_lpf_100k)
 		q_filt, state_q_lpf_100k = signal.lfilter(rf_coeff, 1.0, \
 				iq_data[(block_count)*block_size+1:(block_count+1)*block_size:2],
 				zi=state_q_lpf_100k)
+		# print("here")
+		# i_filt = convolution(iq_data[(block_count)*block_size:(block_count+1)*block_size:2], rf_coeff)
+		# print("here1")
+		# q_filt = convolution(iq_data[(block_count)*block_size+1:(block_count+1)*block_size:2], rf_coeff)
+		# print("here2")
 
 		# downsample the FM channel
 		i_ds = i_filt[::rf_decim]
 		q_ds = q_filt[::rf_decim]
 
 		# FM demodulator
-		fm_demod, state_phase = fmDemodArctan(i_ds, q_ds, state_phase)
+		# fm_demod, state_phase = fmDemodArctan(i_ds, q_ds, state_phase)
+		fm_demod, state_phase = fmDemodFriendly(i_ds, q_ds, state_phase)
 
+
+		#************************TAKEHOME EXERCISE #2****************************************
+
+		#To make this program more efficent, instead of filtering all data, then down
+		#sampling just the 5th element, we might as well just pass every 5th element to the filter
+		#to have an improved run-time
 		# extract the mono audtio data through filtering
-		# audio_filt = ... change as needed
-		audio_filt = signal.lfilter(audio_coeff, 1.0, fm_demod)
+		audio_filt = signal.lfilter(audio_coeff, 1.0, fm_demod[::audio_decim])
+		# audio_filt = convolution(fm_demod[::audio_decim], audio_coeff)
 
 		# downsample audio data
-		# audio_block = ... change as needed
-		audio_block = audio_filt[::audio_decim]
+		audio_block = audio_filt
 
 		# concatanete most recently processed audio_block
 		# to the previous blocks stored in audio_data

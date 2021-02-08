@@ -64,8 +64,8 @@ def animate_update(block_count, iq_data, block_size, rf_coeff, audio_coeff):
 	# PSD after FM demodulation
 	ax0.clear()
 	ax0.psd(fm_demod, NFFT=512, Fs=(rf_Fs/rf_decim)/1e3)
-	# freq, my_psd = estimatePSD(fm_demod, NFFT=512, Fs=(rf_Fs/rf_decim)/1e3)
-	# ax0.plot(freq, my_psd)
+	freq, my_psd = estimatePSD(fm_demod, NFFT=512, Fs=(rf_Fs/rf_decim)/1e3)
+	ax0.plot(freq, my_psd)
 	ax0.set_ylabel('PSD (dB/Hz)')
 	ax0.set_xlabel('Freq (kHz)')
 	ax0.set_title('Demodulated FM (block ' + str(block_count) + ')')

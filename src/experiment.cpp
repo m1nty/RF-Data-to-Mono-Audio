@@ -13,6 +13,77 @@ Ontario, Canada
 #include "genfunc.h"
 #include "iofunc.h"
 #include "logfunc.h"
+#include <cmath>
+#include <complex.h>
+
+// Slice Function for sub-vectors
+std::vector<float> slice(std::vector<float>arr,int low, int high)
+{
+    auto start = arr.begin() + low;
+    auto end = arr.begin() + high + 1;
+    std::vector<float>  result(high - low + 1);
+    copy(start, end, result.begin());
+    return result;
+}
+
+// Slice Function for sub-vectors
+std::vector<std::complex<float>> complex_slice(std::vector<std::complex<float>> arr,int low, int high)
+{
+    auto start = arr.begin() + low;
+    auto end = arr.begin() + high + 1;
+    std::vector<std::complex<float>>  result(high - low + 1);
+    copy(start, end, result.begin());
+    return result;
+}
+
+void estimatePSD(const std::vector<float> &samples, float Fs, std::vector<float> &freq, std::vector<float> &psd_est) {
+
+
+	int freq_bins = NFFT;
+	float df = Fs/freq_bins;
+
+	float currFs = 0;
+	while (currFs < Fs/2){
+		freq.push_back(currFs);
+		currFs += df;
+	}
+
+	std::vector<float> hann(freq_bins);
+	for (auto i =0 ; i<hann.size() ; i++){
+		hann[i] = pow(sin(i*PI/freq_bins),2);
+	}
+
+	int no_segments = floor(samples.size()/freq_bins);
+
+	std::vector<float> windowed_samples(freq_bins,0.0);
+	std::vector<float> sample_window;
+	std::vector<std::complex<float>> Xf;
+	std::vector<float> psd_list;
+	std::vector<float> arr(freq_bins, 0.0);
+	psd_est = arr;
+
+	for (auto k = 0 ; k<no_segments ; k++){
+
+		sample_window = slice(samples, k*freq_bins, (k+1)*freq_bins);
+		for(auto i = 0 ; i< freq_bins ; i++){
+			windowed_samples[i] = hann[i] * sample_window[i];
+		}
+
+		DFT(windowed_samples, Xf);
+		Xf = complex_slice(Xf, 0, freq_bins/2);
+
+		for(auto i = 0 ; i<Xf.size() ; i++){
+			psd_list.push_back(10*log10( 2/(Fs*freq_bins/2) * pow(abs(Xf[i]),2) ));
+		}
+	}
+
+	for(auto k = 0 ; k<freq_bins/2 ; k++){
+		for(auto l = 0 ; l<no_segments ; l++){
+			psd_est[k] += psd_list[k + l*(freq_bins/2)];
+		}
+		psd_est[k] = psd_est[k] / no_segments;
+	}
+}
 
 int main()
 {
@@ -34,12 +105,11 @@ int main()
 	// Fourier transform - there is no FFT implementation ... yet
 	// unless you wish to wait for a very long time, keep NFFT at 1024 or below
 	std::vector<float> slice_data = \
-		std::vector<float>(bin_data.begin(), bin_data.begin() + NFFT);
+	std::vector<float>(bin_data.begin(), bin_data.begin() + NFFT);
 	// note: make sure that binary data vector is big enough to take the slice
 
 	// declare a vector of complex values for DFT
   	std::vector<std::complex<float>> Xf;
-	// ... in-lab ...
 	// compute the Fourier transform
 	// the function is already provided in fourier.cpp
 	DFT(slice_data, Xf);
@@ -47,7 +117,6 @@ int main()
 	// note: we are concerned only with the magnitude of the frequency bin
 	// (there is NO logging of the phase response, at least not at this time)
 	std::vector<float> Xmag;
-	// ... in-lab ...
 	// compute the magnitude of each frequency bin
 	// the function is already provided in fourier.cpp
 	computeVectorMagnitude(Xf, Xmag);
@@ -57,12 +126,14 @@ int main()
 	genIndexVector(vector_index, Xmag.size());
 	logVector("demod_freq", vector_index, Xmag); // log only positive freq
 
-	// for your take-home exercise - repeat the above after implementing
-	// your OWN function for PSD based on the Python code that has been provided
-	// note the estimate PSD function should use the entire block of "bin_data"
-	//
-	// ... complete as part of the take-home ...
-	//
+	std::vector<float> freq;
+	std::vector<float> psd_est;
+ 	float Fs=(2.4e6/10)/1e3;
+	estimatePSD(bin_data,Fs,freq,psd_est);
+
+	vector_index.clear();
+	genIndexVector(vector_index, psd_est.size());
+	logVector("demod_psd", vector_index, psd_est);
 
 	// if you wish to write some binary files, see below example
 	// const std::string out_fname = "../data/outdata.bin";
