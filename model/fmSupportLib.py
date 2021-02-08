@@ -61,6 +61,35 @@ def fmDemodArctan(I, Q, prev_phase = 0.0):
 	# (the last phase is needed to enable continuity for block processing)
 	return fm_demod, prev_phase
 
+def fmDemodFriendly(I, Q, prev_phase = 0.0):
+#
+# the default prev_phase phase is assumed to be zero, however
+# take note in block processing it must be explicitly controlled
+
+	# empty vector to store the demodulated samples
+	fm_demod = np.empty(len(I))
+	prevQ = 0.0
+	prevI = 0.0
+
+	# iterate through each of the I and Q pairs
+	for k in range(len(I)):
+
+		dQ = Q[k] - prevQ
+		prevQ = Q[k]
+
+		dI = I[k] - prevI
+		prevI = I[k]
+		current_phase = ((I[k]*dQ) - (Q[k]*dI)) / (I[k]**2 + Q[k]**2)
+
+		# take the derivative of the phase
+		fm_demod[k] = current_phase
+
+		prev_phase = current_phase
+
+	# return both the demodulated samples as well as the last phase
+	# (the last phase is needed to enable continuity for block processing)
+	return fm_demod, prev_phase
+
 # custom function for DFT that can be used by the PSD estimate
 def DFT(x):
 
@@ -84,12 +113,12 @@ def DFT(x):
 # the user a "reasonably good" view of the power spectrum
 def estimatePSD(samples, NFFT, Fs):
 
+
 	# rename the NFFT argument (notation consistent with matplotlib.psd)
 	# to freq_bins (i.e., frequency bins for which we compute the spectrum)
 	freq_bins = NFFT
 	# frequency increment (or resolution)
 	df = Fs/freq_bins
-
 	# create the frequency vector to be used on the X axis
 	# for plotting the PSD on the Y axis (only positive freq)
 	freq = np.arange(0, Fs/2, df)

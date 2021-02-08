@@ -15,6 +15,7 @@ import math
 
 # use "custom" fmDemodArctan
 from fmSupportLib import fmDemodArctan
+from fmSupportLib import fmDemodFriendly
 
 rf_Fs = 2.4e6
 rf_Fc = 100e3
@@ -22,8 +23,35 @@ rf_taps = 151
 rf_decim = 10
 
 audio_Fs = 48e3
+audio_Fc = 1.6e4
+audio_taps = 151
 audio_decim = 5
-# add other settings for audio, like filter taps, ...
+
+
+def convolution(x, h):
+	M = len(x)
+	N = len(h)
+	y = np.zeros(x.shape[0])
+	for n in range(M+N-1): #finite sequence, thus bound ensures all values are covered
+		for k in range(N+1):
+			if((n-k)>=0 and k<=(N-1) and (n-k)<=(M-1)): #conditions which result in invalid indexing (convolution value of 0)
+				y[n] += x[n - k]*h[k] #convolution summation
+		if n==len(x)-1: #if block size reached, break from loop
+			break
+	return y
+
+
+def lowPass(fc, fs, taps):
+	nc = fc/(fs/2)
+	h = [0]*taps
+	for i in range(taps):
+		if(i ==(taps-1)/2):
+			h[i] = nc
+		else:
+			h[i] = nc*( (np.sin(np.pi*nc*(i - (taps-1)/2)))/(np.pi*nc*(i - (taps-1)/2)))
+		h[i] = h[i] * (np.sin((i*np.pi)/taps)**2)
+	return h
+
 
 if __name__ == "__main__":
 
@@ -33,13 +61,20 @@ if __name__ == "__main__":
 	iq_data = np.fromfile(in_fname, dtype='float32')
 	print("Read raw RF data from \"" + in_fname + "\" in float32 format")
 
-	# coefficients for the front-end low-pass filter
-	rf_coeff = signal.firwin(rf_taps, \
-							rf_Fc/(rf_Fs/2), \
-							window=('hann'))
+	# # coefficients for the front-end low-pass filter
+	# rf_coeff = signal.firwin(rf_taps, \
+	# 						rf_Fc/(rf_Fs/2), \
+	# 						window=('hann'))
 
-	# coefficients for the filter to extract mono audio
-	audio_coeff = np.array([]) # to be updated by you during in-lab
+	# # coefficients for the filter to extract mono audio
+	# audio_coeff = signal.firwin(audio_taps, \
+	# 						audio_Fc/(audio_Fs/2), \
+	# 						window=('hann'))
+
+	#************************TAKEHOME EXERCISE #2****************************************
+
+	rf_coeff = lowPass(rf_Fc, rf_Fs, rf_taps)
+	audio_coeff = lowPass(audio_Fc, audio_Fs, audio_taps)
 
 	# set up drawing
 	fig, (ax0, ax1, ax2) = plt.subplots(nrows=3)
@@ -55,7 +90,7 @@ if __name__ == "__main__":
 	state_q_lpf_100k = np.zeros(rf_taps-1)
 	state_phase = 0
 	# add state as needed for the mono channel filter
-
+	state_audio_lpf_100k = np.zeros(audio_taps-1)
 	# audio buffer that stores all the audio blocks
 	audio_data = np.array([]) # to be updated by you during in-lab
 
@@ -68,29 +103,45 @@ if __name__ == "__main__":
 		print('Processing block ' + str(block_count))
 
 		# filter to extract the FM channel (I samples are even, Q samples are odd)
+
+		#************************TAKEHOME EXERCISE #2****************************************
+
 		i_filt, state_i_lpf_100k = signal.lfilter(rf_coeff, 1.0, \
 				iq_data[(block_count)*block_size:(block_count+1)*block_size:2],
 				zi=state_i_lpf_100k)
 		q_filt, state_q_lpf_100k = signal.lfilter(rf_coeff, 1.0, \
 				iq_data[(block_count)*block_size+1:(block_count+1)*block_size:2],
 				zi=state_q_lpf_100k)
+		# print("here")
+		# i_filt = convolution(iq_data[(block_count)*block_size:(block_count+1)*block_size:2], rf_coeff)
+		# print("here1")
+		# q_filt = convolution(iq_data[(block_count)*block_size+1:(block_count+1)*block_size:2], rf_coeff)
+		# print("here2")
 
 		# downsample the FM channel
 		i_ds = i_filt[::rf_decim]
 		q_ds = q_filt[::rf_decim]
 
 		# FM demodulator
-		fm_demod, state_phase = fmDemodArctan(i_ds, q_ds, state_phase)
+		# fm_demod, state_phase = fmDemodArctan(i_ds, q_ds, state_phase)
+		fm_demod, state_phase = fmDemodFriendly(i_ds, q_ds, state_phase)
 
+
+		#************************TAKEHOME EXERCISE #2****************************************
+
+		#To make this program more efficent, instead of filtering all data, then down
+		#sampling just the 5th element, we might as well just pass every 5th element to the filter
+		#to have an improved run-time
 		# extract the mono audtio data through filtering
-		# audio_filt = ... change as needed
+		audio_filt = signal.lfilter(audio_coeff, 1.0, fm_demod[::audio_decim])
+		# audio_filt = convolution(fm_demod[::audio_decim], audio_coeff)
 
 		# downsample audio data
-		# audio_block = ... change as needed
+		audio_block = audio_filt
 
 		# concatanete most recently processed audio_block
 		# to the previous blocks stored in audio_data
-		# audio_data = np.concatenate((audio_data, audio_block))
+		audio_data = np.concatenate((audio_data, audio_block))
 
 		# to save runtime select the range of blocks to log iq_data
 		# this includes both saving binary files as well plotting PSD
@@ -108,18 +159,18 @@ if __name__ == "__main__":
 			fm_demod.astype('float32').tofile(fm_demod_fname)
 
 			# PSD after extracting mono audio
-			# ax1.clear()
-			# ax1.psd(audio_filt, NFFT=512, Fs=(rf_Fs/rf_decim)/1e3)
-			# ax1.set_ylabel('PSD (dB/Hz)')
-			# ax1.set_xlabel('Freq (kHz)')
-			# ax1.set_title('Extracted Mono')
+			ax1.clear()
+			ax1.psd(audio_filt, NFFT=512, Fs=(rf_Fs/rf_decim)/1e3)
+			ax1.set_ylabel('PSD (dB/Hz)')
+			ax1.set_xlabel('Freq (kHz)')
+			ax1.set_title('Extracted Mono')
 
 			# PSD after decimating mono audio
-			# ax2.clear()
-			# ax2.psd(audio_block, NFFT=512, Fs=audio_Fs/1e3)
-			# ax2.set_ylabel('PSD (dB/Hz)')
-			# ax2.set_xlabel('Freq (kHz)')
-			# ax2.set_title('Mono Audio')
+			ax2.clear()
+			ax2.psd(audio_block, NFFT=512, Fs=audio_Fs/1e3)
+			ax2.set_ylabel('PSD (dB/Hz)')
+			ax2.set_xlabel('Freq (kHz)')
+			ax2.set_title('Mono Audio')
 
 			# save figure to file
 			fig.savefig("../data/fmMonoBlock" + str(block_count) + ".png")
@@ -132,4 +183,4 @@ if __name__ == "__main__":
 	wavfile.write("../data/fmMonoBlock.wav", int(audio_Fs), np.int16((audio_data/2)*32767))
 
 	# uncomment assuming you wish to show some plots
-	# plt.show()
+	plt.show()
