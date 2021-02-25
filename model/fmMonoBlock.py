@@ -28,17 +28,22 @@ audio_taps = 151
 audio_decim = 5
 
 
-def convolution(x, h):
+def blockConvolution(x, h, state_in):
 	M = len(x)
 	N = len(h)
-	y = np.zeros(x.shape[0])
-	for n in range(M+N-1): #finite sequence, thus bound ensures all values are covered
-		for k in range(N+1):
-			if((n-k)>=0 and k<=(N-1) and (n-k)<=(M-1)): #conditions which result in invalid indexing (convolution value of 0)
-				y[n] += x[n - k]*h[k] #convolution summation
-		if n==len(x)-1: #if block size reached, break from loop
-			break
-	return y
+	y = np.zeros(M)
+	for n in range(M): 
+		for k in range(N):
+			if n-k >= 0:
+				y[n] += x[n-k]*h[k]
+			else:
+				y[n] += state_in[n-k]*h[k]
+	state_out = x[-(N-1):]
+	
+	if(len(state_out)!=N-1):
+		state_out = np.concatenate((state_out,np.zeros(N-1-len(state_out))))
+
+	return y, state_out
 
 
 def lowPass(fc, fs, taps):
@@ -86,6 +91,7 @@ if __name__ == "__main__":
 	block_count = 0
 
 	# states needed for continuity in block processing
+	state = np.zeros(audio_taps-1)
 	state_i_lpf_100k = np.zeros(rf_taps-1)
 	state_q_lpf_100k = np.zeros(rf_taps-1)
 	state_phase = 0
@@ -112,11 +118,8 @@ if __name__ == "__main__":
 		q_filt, state_q_lpf_100k = signal.lfilter(rf_coeff, 1.0, \
 				iq_data[(block_count)*block_size+1:(block_count+1)*block_size:2],
 				zi=state_q_lpf_100k)
-		# print("here")
-		# i_filt = convolution(iq_data[(block_count)*block_size:(block_count+1)*block_size:2], rf_coeff)
-		# print("here1")
-		# q_filt = convolution(iq_data[(block_count)*block_size+1:(block_count+1)*block_size:2], rf_coeff)
-		# print("here2")
+		# i_filt, state_i_lpf_100k = blockConvolution(iq_data[(block_count)*block_size:(block_count+1)*block_size:2], rf_coeff, state_i_lpf_100k)
+		# q_filt, state_q_lpf_100k = blockConvolution(iq_data[(block_count)*block_size+1:(block_count+1)*block_size:2], rf_coeff, state_q_lpf_100k)
 
 		# downsample the FM channel
 		i_ds = i_filt[::rf_decim]
@@ -133,8 +136,8 @@ if __name__ == "__main__":
 		#sampling just the 5th element, we might as well just pass every 5th element to the filter
 		#to have an improved run-time
 		# extract the mono audtio data through filtering
-		audio_filt = signal.lfilter(audio_coeff, 1.0, fm_demod[::audio_decim])
-		# audio_filt = convolution(fm_demod[::audio_decim], audio_coeff)
+		# audio_filt = signal.lfilter(audio_coeff, 1.0, fm_demod[::audio_decim])
+		audio_filt, state = blockConvolution(fm_demod[::audio_decim], audio_coeff, state)
 
 		# downsample audio data
 		audio_block = audio_filt
